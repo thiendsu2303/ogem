@@ -15,22 +15,36 @@ import (
 	"github.com/rs/cors"
 	"github.com/valkey-io/valkey-go"
 	"github.com/yanolja/ogem/config"
+	"github.com/yanolja/ogem/monitor/schema"
 	"github.com/yanolja/ogem/server"
 	"github.com/yanolja/ogem/state"
 	"github.com/yanolja/ogem/utils"
 )
 
 func main() {
+	ctx := context.Background()
 	logger := utils.Must(zap.NewProduction())
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
+	// Load configuration
 	config, err := config.LoadConfig(*configPath, sugar)
 	if err != nil {
 		sugar.Fatalw("Failed to load config", "error", err)
 	}
+
+	// Initialize schema monitor
+	monitor := schema.NewMonitor(
+		os.Getenv("SLACK_TOKEN"),
+		os.Getenv("SLACK_CHANNEL_ID"),
+	)
+	
+	// Start schema monitor scheduler
+	scheduler := schema.NewScheduler(monitor, 24*time.Hour)
+	scheduler.Start(ctx)
+	defer scheduler.Stop()
 
 	stateManager, cleanup, err := setupStateManager(config.ValkeyEndpoint)
 	if err != nil {
